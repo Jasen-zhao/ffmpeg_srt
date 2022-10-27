@@ -83,7 +83,7 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	//为AVCodecContext结构体分配内存
+	//创建AVCodecContext结构体
 	pCodecCtx = avcodec_alloc_context3(NULL);
     if (pCodecCtx == NULL){  
 		printf("Could not allocate AVCodecContext \n");  
@@ -91,8 +91,8 @@ int main(int argc, char* argv[])
     }
 	//将AVCodecParameters结构体中码流参数拷贝到AVCodecContext结构体
     avcodec_parameters_to_context(pCodecCtx, pFormatCtx->streams[videoindex]->codecpar); 
+	//选择解码器
 	AVCodec	*pCodec=(AVCodec *)avcodec_find_decoder(pCodecCtx->codec_id);
-
 	if(pCodec==NULL)
 	{
 		printf("Codec not found.\n");
@@ -161,7 +161,7 @@ int main(int argc, char* argv[])
 			//------------------------------
 			if(av_read_frame(pFormatCtx, packet)>=0){
 				if(packet->stream_index==videoindex){
-					ret = avcodec_send_packet(pCodecCtx, packet);
+					ret = avcodec_send_packet(pCodecCtx, packet);//发送packet到解码队列中
 					if(ret < 0){
 						printf("Decode Error.\n");
 						return -1;
