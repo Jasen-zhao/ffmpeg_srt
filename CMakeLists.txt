@@ -22,12 +22,14 @@ set(CMAKE_CXX_FLAGS -pthread)
 
 
 # 可执行文件的输出名
-# add_executable(camera_show  Read_camera.c)
+# add_executable(camera_show  read_camera.c)
 # add_executable(send  src/sendfile.cpp)
 # add_executable(recv  src/recvfile.cpp)
 # add_executable(send_client  send_client.c)
 # add_executable(recv_client  recv_client.c)
-add_executable(h265_encode  h265_encode.c)
+# add_executable(h265_encode  h265_encode.c)
+add_executable(muxer  muxer.cpp)
+
 
 # 链接lib库
 # target_link_libraries(camera_show libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so)
@@ -35,4 +37,5 @@ add_executable(h265_encode  h265_encode.c)
 # target_link_libraries(recv libsrt.so)
 # target_link_libraries(send_client libsrt.so)
 # target_link_libraries(recv_client libsrt.so)
-target_link_libraries(h265_encode libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so)
+# target_link_libraries(h265_encode libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so)
+target_link_libraries(muxer libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so)
