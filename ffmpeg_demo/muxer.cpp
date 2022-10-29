@@ -1,9 +1,10 @@
 /*
  * 最简单的基于FFmpeg的音视频复用器（不涉及编码和解码）
- *参考网址：https://blog.csdn.net/leixiaohua1020/article/details/39802913
+ * 参考网址：https://blog.csdn.net/leixiaohua1020/article/details/39802913
  * 本程序可以将音频码流和视频码流打包到一种封装格式中
- * 程序中将AAC/MP3编码的音频流和H.264/H.265编码的视频流打包成MP4/TS格式文件
- *
+ * 程序中将AAC/MP3编码的音频流和H.264编码的视频流打包成MP4格式文件
+ * https://github.com/leixiaohua1020/simplest_ffmpeg_format
+ *本例实现，提取第一路输入文件中的视频流和第二路输入文件中的音频流，将这两路流混合，输出到一路输出文件中。
  */
  
 #include <stdio.h>
@@ -101,12 +102,13 @@ int main(int argc, char *argv[])
 		goto end;
 	}
  
-	//视频输入流
+	//向输出中添加两路流，一路用于存储视频流，一路用于存储音频流,该部分是视频输入流
 	for (i = 0; i < ifmtCtxVideo->nb_streams; ++i)
 	{
 		if (ifmtCtxVideo->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
 		{
 			AVStream *inStream = ifmtCtxVideo->streams[i];
+			//构造一个AVStream对象，该AVStream对象是ofmtCtx（AVFormatContext）中的一个stream成员
 			AVStream *outStream = avformat_new_stream(ofmtCtx, NULL);
 			inVideoIndex = i;
  
@@ -117,7 +119,7 @@ int main(int argc, char *argv[])
 			}
  
 			outVideoIndex = outStream->index;
- 
+			//复制上下文配置信息 用于将输入流上下文配置复制至输出流,需要传入输出流编码器指针和输入流编码器指针
 			if (avcodec_parameters_copy(outStream->codecpar, inStream->codecpar) < 0)
 			{
 				printf("faild to copy context from input to output stream");
@@ -130,7 +132,7 @@ int main(int argc, char *argv[])
 		}
 	}
  
-	//音频输入流
+	//向输出中添加两路流，一路用于存储视频流，一路用于存储音频流,该部分是音频输入流
 	for (i = 0; i < ifmtCtxAudio->nb_streams; ++i)
 	{
 		if (ifmtCtxAudio->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
@@ -187,12 +189,13 @@ int main(int argc, char *argv[])
 #if USE_AACBSF
 	AVBitStreamFilterContext* aacbsfc =  av_bitstream_filter_init("aac_adtstoasc");
 #endif
+	//从两路输入依次取得 packet，交织存入输出中
 	while (1)
 	{
 		AVFormatContext *ifmtCtx = NULL;
 		AVStream *inStream, *outStream;
 		int streamIndex = 0;
- 
+		//比较时间戳，决定写入视频还是写入音频
 		if (av_compare_ts(curPstVideo, ifmtCtxVideo->streams[inVideoIndex]->time_base, curPstAudio, ifmtCtxAudio->streams[inAudioIndex]->time_base) < 0)
 		{
 			ifmtCtx = ifmtCtxVideo;
@@ -287,7 +290,7 @@ int main(int argc, char *argv[])
 		packet.pos = -1;
 		packet.stream_index = streamIndex;
  
-		//write
+		//write,写入一个AVPacket到输出文件
 		if (av_interleaved_write_frame(ofmtCtx, &packet) < 0)
 		{
 			printf("error muxing packet");
@@ -297,7 +300,7 @@ int main(int argc, char *argv[])
 		av_packet_unref(&packet);
 	}
  
-	//Write file trailer
+	//Write file trailer,写入文件尾。
 	av_write_trailer(ofmtCtx);
  
 #if USE_H264BSF
