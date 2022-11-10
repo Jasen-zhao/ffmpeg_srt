@@ -1,12 +1,6 @@
 /**
- * 最简单的基于FFmpeg的AVDevice例子（读取摄像头）
- * https://blog.csdn.net/leixiaohua1020/article/details/39702113
- * 本程序实现了本地摄像头数据的获取解码和显示。是基于FFmpeg
- * 的libavdevice类库最简单的例子。通过该例子，可以学习FFmpeg中
- * libavdevice类库的使用方法。
- * 在Linux下可以使用video4linux2读取摄像头设备。
+ 从文件或者服务器拉取流(h264),并解编码显示，代码中只实现了视频流，没有实现音频流
  */
-
 
 #include <stdio.h>
 #define __STDC_CONSTANT_MACROS
@@ -21,64 +15,47 @@
 #define SFM_REFRESH_EVENT  (SDL_USEREVENT + 1)
 #define SFM_BREAK_EVENT  (SDL_USEREVENT + 2)
 
+
 //等于1时进程结束，退出进程
 int thread_exit=0;
 
-// 画面刷新线程
-// 通常使用多线程的方式进行画面刷新管理，主线程进入主循环中等待事件，
-// 画面刷新线程在一段时间后发送画面刷新事件，主线程收到画面刷新事件后进行画面刷新操作。
-int sfp_refresh_thread(void *opaque)
-{
-	thread_exit=0;
-	while (!thread_exit) {
-		SDL_Event event;
-		event.type = SFM_REFRESH_EVENT;
-		//向队列中发送一个事件,标准的SDL 1.2队列的事件数上限数为 128，当队列已满时，新的事件将会被扔掉
-		SDL_PushEvent(&event);
-		SDL_Delay(100);//单位为ms,表示刷新间隔，不能太小，不然很容易满事件队列
-	}
-	thread_exit=0;
-	//结束
-	SDL_Event event;
-	event.type = SFM_BREAK_EVENT;
-	SDL_PushEvent(&event);
-	return 0;
-}
-
-
 int main(int argc, char* argv[])
 {
- 
 	AVFormatContext	*pFormatCtx;
-	int				i, videoindex;
 	AVCodecContext	*pCodecCtx;
+	int videoindex=-1;
+
+    // char inpath[]="/home/zhaofachuan/works/readdemo/data/cuc_ieschool.h264";
+    // char inpath[]="/home/zhaofachuan/works/readdemo/data/cuc_ieschool.ts";
+	char inpath[] = "srt://127.0.0.1:4201";
 	
 	avdevice_register_all();//注册libavdevice
-	pFormatCtx = avformat_alloc_context();
- 
-    //Linux下打开输入设备
-	AVInputFormat *ifmt=(AVInputFormat *)av_find_input_format("video4linux2");
-	if(avformat_open_input(&pFormatCtx,"/dev/video0",ifmt,NULL)!=0){
+    avformat_network_init();//支持网络流
+
+	pFormatCtx = avformat_alloc_context();//初始化AVFormatContext
+	printf("LINE=%d \n" ,__LINE__);
+	if (avformat_open_input(&pFormatCtx,inpath, NULL, NULL) != 0){//打开文件或网络流
 		printf("Couldn't open input stream.\n");
 		return -1;
 	}
-
+	printf("LINE=%d \n" ,__LINE__);
+    
 	//检查是否从输入设备获取输入流
 	if(avformat_find_stream_info(pFormatCtx,NULL)<0)
 	{
 		printf("Couldn't find stream information.\n");
 		return -1;
 	}
-	videoindex=-1;
-	for(i=0; i<pFormatCtx->nb_streams; i++){
+
+	//找到视频流
+	for(int i=0; i<(int)pFormatCtx->nb_streams; i++){
 		if(pFormatCtx->streams[i]->codecpar->codec_type==AVMEDIA_TYPE_VIDEO)
 		{
 			videoindex=i;
 			break;
 		}
 	}
-	if(videoindex==-1)
-	{
+	if(videoindex==-1){
 		printf("Couldn't find a video stream.\n");
 		return -1;
 	}
@@ -89,6 +66,7 @@ int main(int argc, char* argv[])
 		printf("Could not allocate AVCodecContext \n");  
 		return -1;  
     }
+
 	//将AVCodecParameters结构体中码流参数拷贝到AVCodecContext结构体
     avcodec_parameters_to_context(pCodecCtx, pFormatCtx->streams[videoindex]->codecpar); 
 	//选择解码器
@@ -106,60 +84,54 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	//定义AVFrame
-	AVFrame	*pFrame,*pFrameYUV420;
-	pFrame=av_frame_alloc();
-	pFrameYUV420=av_frame_alloc();
 	//SDL----------------------------
 	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER)) {  //初始化SDL库
 		printf( "Could not initialize SDL - %s\n", SDL_GetError()); 
 		return -1;
-	} 
+	}
 	int screen_w=0,screen_h=0;
-	SDL_Surface *screen; 
+	SDL_Surface *screen;
 	screen_w = pCodecCtx->width;
 	screen_h = pCodecCtx->height;
 	screen = SDL_SetVideoMode(screen_w, screen_h, 0,0);//设置窗口模式
 
-	if(!screen) {  
+	if(!screen) {
 		printf("SDL: could not set video mode - exiting:%s\n",SDL_GetError());  
 		return -1;
 	}
 
-	SDL_Overlay *bmp; 
-	bmp = SDL_CreateYUVOverlay(pCodecCtx->width, pCodecCtx->height,SDL_YV12_OVERLAY, screen); 
+	SDL_Overlay *bmp;
+	bmp = SDL_CreateYUVOverlay(pCodecCtx->width, pCodecCtx->height,SDL_YV12_OVERLAY, screen);
 	//三个参数表示创建的overlay将接收 YV12 类型的数据，应通过 FFmpeg 库将源视频数据转换为对应类型
 	SDL_Rect rect;
-	rect.x = 0;    
-	rect.y = 0;    
-	rect.w = screen_w;    
-	rect.h = screen_h;  
+	rect.x = 0;
+	rect.y = 0;
+	rect.w = screen_w;
+	rect.h = screen_h;
 	//SDL End------------------------
-
-
-	int ret;
-	AVPacket *packet=(AVPacket *)av_malloc(sizeof(AVPacket));
 
 	struct SwsContext *img_convert_ctx;
 	img_convert_ctx = sws_getContext(pCodecCtx->width, pCodecCtx->height, pCodecCtx->pix_fmt, pCodecCtx->width, pCodecCtx->height, AV_PIX_FMT_YUV420P, SWS_BICUBIC, NULL, NULL, NULL); 
 	//转换成AV_PIX_FMT_YUV420P格式
 	//参数1：被转换源的宽、参数2：被转换源的高、参数3：被转换源的格式，eg：YUV、RGB等
 	//参数4：转换后指定的宽、参数5：转换后指定的高、参数6：转换后指定的格式同参数3的格式、参数7：转换所使用的算法
-	SDL_Thread *video_tid =SDL_CreateThread(sfp_refresh_thread,NULL);
-    if(!video_tid){
-		printf( "Could not Create SDL ThreadL - %s\n", SDL_GetError()); 
-        return -1;
-    }
 	
 	SDL_WM_SetCaption("Read Camera",NULL);//设置窗口的标题和ICON图标
-	//事件
-	SDL_Event event;
+
+    int ret;
+	AVPacket *packet=(AVPacket *)av_malloc(sizeof(AVPacket));
+    //定义AVFrame
+	AVFrame	*pFrame,*pFrameYUV420;
+	pFrame=av_frame_alloc();
+	pFrameYUV420=av_frame_alloc();
+
 	for (;;) {
-		SDL_WaitEvent(&event);//当事件队列为空时阻塞等待一个事件，并将CPU占用释放掉。
-		// printf("event = %d \n",event.type);
-		if(event.type==SFM_REFRESH_EVENT){
-			//------------------------------
-			if(av_read_frame(pFormatCtx, packet)>=0){
+        SDL_Event event;
+		SDL_PollEvent(&event);//查看事件队列，如果事件队列中有事件，直接返回并删除,如果没有也直接返回
+        if(event.type==SDL_QUIT){
+            break;
+        }else{
+            if(av_read_frame(pFormatCtx, packet)>=0){
 				if(packet->stream_index==videoindex){
 					ret = avcodec_send_packet(pCodecCtx, packet);//发送packet到解码队列中
 					if(ret < 0){
@@ -171,9 +143,9 @@ int main(int argc, char* argv[])
 						SDL_LockYUVOverlay(bmp);//对YUV加锁
 						pFrameYUV420->data[0]=bmp->pixels[0];//将转码后的图像与画布的像素缓冲器关联
 						pFrameYUV420->data[1]=bmp->pixels[2];
-						pFrameYUV420->data[2]=bmp->pixels[1];     
+						pFrameYUV420->data[2]=bmp->pixels[1];
 						pFrameYUV420->linesize[0]=bmp->pitches[0];//将转码后的图像扫描行长度与画布像素缓冲区的扫描行长度相关联
-						pFrameYUV420->linesize[1]=bmp->pitches[2];   
+						pFrameYUV420->linesize[1]=bmp->pitches[2];
 						pFrameYUV420->linesize[2]=bmp->pitches[1];
 						sws_scale(img_convert_ctx, (const unsigned char* const*)pFrame->data, pFrame->linesize, 0, pCodecCtx->height, pFrameYUV420->data, pFrameYUV420->linesize);
 						//sws_scale将图像数据转换为 YUV420P，转换后的数据被塞入pFrameYUV422,pFrameYUV422在前面已经与overlay建立联系。
@@ -182,17 +154,13 @@ int main(int argc, char* argv[])
 						// rect 结构体指定播放区域的位置和缩放尺寸
 					}
 				}
-			}else{
-				thread_exit=1;
-			}
-		}else if(event.type==SDL_QUIT){
-			// printf("%d \n",__LINE__);
-			thread_exit=1;
-		}else if(event.type==SFM_BREAK_EVENT){
-			break;
-		}
+            }
+        }
 	}
 
+#if USE_H264BSF
+	av_bitstream_filter_close(h264bsfc);  
+#endif
 	SDL_Quit();
 	av_packet_free(&packet);//释放AVPacket
 	sws_freeContext(img_convert_ctx);//释放img_convert_ctx
@@ -202,3 +170,7 @@ int main(int argc, char* argv[])
 	avformat_close_input(&pFormatCtx);
 	return 0;
 }
+
+
+
+

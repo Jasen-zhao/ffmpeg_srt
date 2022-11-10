@@ -178,8 +178,15 @@ public:
                     return -1;
                 }
 #endif
-                // m_ofmt_ctx->oformat->flags |= AVFMT_TS_NONSTRICT;
+              
+/*
+如果videosteam 的codec中设置了AV_CODEC_FLAG_GLOBAL_HEADER,
+就会导致x264_param_t参数中的b_repeat_header赋值为0，这样每个关键帧前面就不会put SPS/PPS导致解码失败。
+注：使用实时视频传输时，需要实时发送sps/pps数据, 默认情况下重复SPS/PPS要放到关键帧前面；
+*/
+               // m_ofmt_ctx->oformat->flags |= AVFMT_TS_NONSTRICT;
                 if (m_ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
+                    //这里是执行不到的
                     ostream->event_flags|= AV_CODEC_FLAG_GLOBAL_HEADER;
                 }
             }
@@ -241,7 +248,7 @@ int main(int argc, char *argv[])
     // out_filename = "rtp://127.0.0.1:1235";
     //out_filename = "tcp://127.0.0.1:9000";
     //out_filename = "udp://127.0.0.1:1235";
-    out_filename = "srt://127.0.0.1:1235";
+    out_filename = "srt://127.0.0.1:1234";
 
     //Network
     avformat_network_init();

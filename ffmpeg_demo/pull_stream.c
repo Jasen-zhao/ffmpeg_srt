@@ -1,5 +1,5 @@
 /**
- 从服务器拉取流(h264),并解编码显示
+ 从文件或者服务器拉取流(h264),并解编码显示
  */
 
 #include <stdio.h>
@@ -46,8 +46,8 @@ int main(int argc, char* argv[])
 	int				i, videoindex;
 	AVCodecContext	*pCodecCtx;
 
-    char inpath[]="/home/zhaofachuan/works/readdemo/data/cuc_ieschool.h264";
-	// char inpath[] = "rtsp://192.168.1.110:554/2420725677251317_video.sdp+123456";
+    // char inpath[]="/home/zhaofachuan/works/readdemo/data/cuc_ieschool.h264";
+	char inpath[] = "srt://127.0.0.1:4201";
 	
 	avdevice_register_all();//注册libavdevice
     avformat_network_init();//支持网络流
@@ -163,10 +163,10 @@ int main(int argc, char* argv[])
 					av_packet_unref(packet);// 解除引用，防止不必要的内存占用
 					while(avcodec_receive_frame(pCodecCtx,pFrame)==0) { //循环获取AVFrame解码数据
 						SDL_LockYUVOverlay(bmp);//对YUV加锁
-						pFrameYUV420->data[0]=bmp->pixels[0];
+						pFrameYUV420->data[0]=bmp->pixels[0];//将转码后的图像与画布的像素缓冲器关联
 						pFrameYUV420->data[1]=bmp->pixels[2];
 						pFrameYUV420->data[2]=bmp->pixels[1];     
-						pFrameYUV420->linesize[0]=bmp->pitches[0];
+						pFrameYUV420->linesize[0]=bmp->pitches[0];//将转码后的图像扫描行长度与画布像素缓冲区的扫描行长度相关联
 						pFrameYUV420->linesize[1]=bmp->pitches[2];   
 						pFrameYUV420->linesize[2]=bmp->pitches[1];
 						sws_scale(img_convert_ctx, (const unsigned char* const*)pFrame->data, pFrame->linesize, 0, pCodecCtx->height, pFrameYUV420->data, pFrameYUV420->linesize);

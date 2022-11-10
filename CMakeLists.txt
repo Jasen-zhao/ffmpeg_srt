@@ -36,7 +36,13 @@ set(CMAKE_CXX_FLAGS -pthread)
 # add_executable(muxer  ffmpeg_demo/muxer.cpp)
 # add_executable(h265_encode  ffmpeg_demo/h265_encode.c)
 # add_executable(push_stream  ffmpeg_demo/push_stream.cpp)
-add_executable(test  test.c)
+# add_executable(pull_stream  ffmpeg_demo/pull_stream.c)
+add_executable(push_srt  push_srt.cpp)
+add_executable(pull_srt  pull_srt.c)
+# add_executable(muxing  ffmpeg_demo/muxing.c)
+# add_executable(muxing2TS  muxing2TS.c)
+
+
 
 
 # 链接lib库
@@ -49,4 +55,9 @@ add_executable(test  test.c)
 # target_link_libraries(h265_encode libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so)
 # target_link_libraries(muxer libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so)
 # target_link_libraries(push_stream libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so)
-target_link_libraries(test libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so)
+# target_link_libraries(pull_stream libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so)
+target_link_libraries(push_srt libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so)
+target_link_libraries(pull_srt libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so)
+# target_link_libraries(muxing libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so;m.so)
+# target_link_libraries(muxing2TS libavformat.so;libavdevice.so;libavcodec.so;libavutil.so;libswresample.so;libavfilter.so;libpostproc.so;libswscale.so;libSDL.so;m.so)
+
