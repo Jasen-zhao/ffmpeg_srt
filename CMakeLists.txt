@@ -39,9 +39,9 @@ set(CMAKE_CXX_FLAGS -pthread)
 # add_executable(pull_stream  ffmpeg_demo/pull_stream.c)
 # add_executable(muxing  ffmpeg_demo/muxing.c)
 # add_executable(muxing2TS  muxing2TS.c)
-add_executable(push_srt_Camera  push_srt_Camera.cpp)
-add_executable(pull_srt  pull_srt.c)
-add_executable(push_srt_Screen  push_srt_Screen.cpp)
+add_executable(push_srt_Camera  ffmpeg_srt/push_srt_Camera.cpp)
+add_executable(pull_srt  ffmpeg_srt/pull_srt.c)
+add_executable(push_srt_Screen  ffmpeg_srt/push_srt_Screen.cpp)
 
 
 
