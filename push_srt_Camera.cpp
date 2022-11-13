@@ -1,12 +1,11 @@
 /*
-使用ffmpeg采集摄像头数据编码成h265格式并保存成文件
+使用ffmpeg采集摄像头数据编码成h264格式并推流
 参考网址：https://blog.csdn.net/snail_hunan/article/details/115101715
 1、打开设备
 2、打开编码器
 3、采集摄像头数据，为yuyv422格式
 4、转换摄像头数据，从yuyv422转成yuv420p
-5、编码yuv420p数据为h264数据，并写成文件
-使用命令播放一下：ffplay mycamera.h264
+5、编码yuv420p数据为h264数据，并封装成mpegts发送
 */
 
 #include <iostream>
@@ -42,17 +41,18 @@ static AVFormatContext *open_dev() {
     AVFormatContext *fmt_ctx = NULL;
     AVDictionary *options = NULL;
 
-    //摄像头的设备文件
-    char *devicename =(char*) "/dev/video0";
+    //摄像头的设备文件，命令行参数为-i
+    char *devicename =(char*) "/dev/video0";//摄像头
 
     // register video device
     avdevice_register_all();
 
-    //采用video4linux2驱动程序
-    AVInputFormat *iformat = (AVInputFormat *)av_find_input_format("video4linux2");
+    //采用video4linux2驱动程序,命令行参数为-f
+    AVInputFormat *iformat = (AVInputFormat *)av_find_input_format("video4linux2");//摄像头
 
+    //options其实就是命令行：ffmpeg -framerate 30 -video_size 640x480 -pixel_format yuyv422...
     av_dict_set(&options, "video_size", "640x480", 0);
-    av_dict_set(&options, "framerate", "25", 0);
+    av_dict_set(&options, "framerate", "30", 0);
     av_dict_set(&options, "pixel_format", "yuyv422", 0);
 
     // open device
@@ -93,33 +93,33 @@ static void open_encoder(int width, int height, AVCodecContext **enc_ctx) {
     (*enc_ctx)->width = width;  // 640视频的宽度
     (*enc_ctx)->height = height; // 480视频的高度
 
-    // GOP
-    //设置很⼩时，帧就会很多，码流就会很⼤，设置很⼩时，帧就会很少，⼀旦丢包就会出现异常，等到下⼀个帧
-    (*enc_ctx)->gop_size = 250;//强相关帧GOP的最大帧数,表示多少帧一个I帧
-    //最⼩帧间隔，也就是帧最⼩帧就可以插⼊帧可选项，不设置也可以
-    (*enc_ctx)->keyint_min = 25; //如果相邻两帧的变化特别大，可以在gop超过25帧后加入一个I帧
+    //图像组（GOP），对于流媒体一般设为2或3，可以更快的获取pps和sps头
+    //当接收端靠avformat_find_stream_info获取流的信息来给AVFormatContext作设置时，建议设小一些，不然会等待过长。
+    (*enc_ctx)->gop_size = 2;//一个图像组有一个I帧几个P帧和B帧,GOP越小越容易获得I帧，
 
-    //设置B帧数据
-    (*enc_ctx)->max_b_frames = 3; //b帧最多可以连续3个
-    (*enc_ctx)->has_b_frames = 1; //解码过程中帧排序的缓存大小,1
+    //设置B帧数据,将max_b_frames设置为0便没有编码延时
+    (*enc_ctx)->max_b_frames = 0; //两个非B帧之间允许出现多少个B帧数,b 帧越多,图片越小,设置0表示不使用B帧
 
-    //参考帧的数量
-    (*enc_ctx)->refs = 3; // 参考帧的数量
+    //运动估计参考帧的个数
+    (*enc_ctx)->refs = 3; //一般为3
 
     //设置输入YUV格式
     (*enc_ctx)->pix_fmt = AV_PIX_FMT_YUV420P;//像素格式
 
     //设置码率,视频的码率是视频单位时间内传递的数据量;
     //码率越高，视频的清晰度越好;码率越高，视频的也就越大;一般“码率×视频的时间（秒）÷8=视频大小;
-    (*enc_ctx)->bit_rate = 600000; //单位kbps,600000
+    (*enc_ctx)->bit_rate = 6000000; //单位kbps,需要自己调节
 
     //设置帧率
-    (*enc_ctx)->time_base = (AVRational){1, 25}; //帧与帧之间的间隔是time_base
-    (*enc_ctx)->framerate = (AVRational){25, 1}; //帧率，每秒 25帧
+    (*enc_ctx)->time_base = (AVRational){1, 30}; //帧与帧之间的间隔是time_base
+    (*enc_ctx)->framerate = (AVRational){30, 1}; //帧率，每秒 30帧
 
     AVDictionary *options =NULL;
-    av_dict_set(&options, "tune", "zerolatency", 0);//实时编码，禁止延时;
-
+    //--preset的参数主要调节编码速度和质量的平衡，有ultrafast（转码速度最快，视频往往也最模糊）、
+    //superfast、veryfast、faster、fast、medium、slow、slower、veryslow、placebo这10个选项，从快到慢
+    av_dict_set(&options, "preset", "ultrafast", 0);//快速模式编码;
+    av_dict_set(&options, "tune", "zerolatency", 0);//设置零延时编码
+    
     ret = avcodec_open2((*enc_ctx), codec, &options);
     if (ret < 0) {
         printf("Could not open codec!\n");
@@ -297,13 +297,13 @@ public:
         CloseOutputStream();
     }
 
-    int OpenOutputStream(const std::string& url, AVFormatContext *ifmt_ctx)
+    int OpenOutputStream(const std::string& url, AVFormatContext *ifmt_ctx,AVCodecContext *enc_ctx)
     {
         int ret = 0;
         const char* format_name = NULL;
         m_url = url;
         //string_start_with：如果字符串以指定的前缀开始,则返回true;否则返回false
-        //format_name：说明推流的封装格式，除了srt以外其它均是默认封装
+        //format_name：说明推流的封装格式，下面均是默认封装
         if (string_start_with(m_url, "rtsp://")) {
             format_name = "rtsp";
         }else if(string_start_with(m_url, "udp://") || string_start_with(m_url, "tcp://")) {
@@ -313,7 +313,7 @@ public:
         }else if(string_start_with(m_url, "rtmp://")) {
             format_name = "flv";
         }else if(string_start_with(m_url, "srt://")) {//"mpegts"
-            format_name ="h264";
+            format_name ="mpegts";
         }else{
             std::cout << "Not support this Url:" << m_url << std::endl;
             return -1;
@@ -334,10 +334,9 @@ public:
                         std::cout << "Can't create new stream!" << std::endl;
                         return -1;
                     }
-
-                    AVCodecContext *codec_ctx = avcodec_alloc_context3(NULL);
-                    ret = avcodec_parameters_to_context(codec_ctx, ifmt_ctx->streams[i]->codecpar);
-                    if (ret < 0){
+                    //enc_ctx是h264编码，给输出上下文设置属性
+                    AVCodecContext *codec_ctx = enc_ctx;
+                    if (NULL==codec_ctx){
                         printf("Failed to copy in_stream codecpar to codec context\n");
                         return -1;
                     }
@@ -447,7 +446,8 @@ int main(int argc, char *argv[]) {
     AVFormatContext *fmt_ctx = NULL;
     AVCodecContext *enc_ctx = NULL;
     const char *out_filename;
-    out_filename = "srt://127.0.0.1:1234";
+    // out_filename = "srt://127.0.0.1:1234";
+    out_filename="srt://127.0.0.1:1234?pkt_size=1316";
 
     // 设置日志级别
     av_log_set_level(AV_LOG_DEBUG);
@@ -470,7 +470,7 @@ int main(int argc, char *argv[]) {
     //打开推流器
     if (NULL == pusher) {
         pusher = new FfmpegOutputer();
-        ret = pusher->OpenOutputStream(out_filename, fmt_ctx);
+        ret = pusher->OpenOutputStream(out_filename, fmt_ctx,enc_ctx);
         if (ret != 0){
             goto __ERROR;
         }
@@ -478,17 +478,18 @@ int main(int argc, char *argv[]) {
    
     // 从设备读取数据
     while ((ret = av_read_frame(fmt_ctx, &pkt)) == 0) {
-        av_log(NULL, AV_LOG_INFO, "packet size is %d(%p)\n", pkt.size,
+        av_log(NULL, AV_LOG_INFO, "packet size is %d(%p)   \n", pkt.size,
                pkt.data);
         // YUYVYUYVYUYVYUYV（YUYV422）转成 YYYYYYYYUUVV   （YUV420）
         yuyv422ToYuv420p(frame, &pkt);
 
-        frame->pts = base++;
+        frame->pts = base++;//记录帧
+        //将YUV420编码成h264，并推流
         encode(enc_ctx, frame, newpkt, pusher);
         
         // release pkt
         av_packet_unref(&pkt); 
-        av_usleep(40000);//等待30ms
+        // av_usleep(33000);//等待33ms,这里还是不要延时的好
     }
 
     encode(enc_ctx, NULL, newpkt, pusher);//间接方法写入文件尾

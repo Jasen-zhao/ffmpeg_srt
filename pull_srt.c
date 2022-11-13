@@ -1,5 +1,6 @@
 /**
- 从文件或者服务器拉取流(h264),并解编码显示，代码中只实现了视频流，没有实现音频流
+ 从文件或者服务器拉取流(h264),并解编码显示，代码中只实现了视频流，没有实现音频流。
+ 目前拉流端基本可以做到实时,推测延时主要产生于推流端。
  */
 
 #include <stdio.h>
@@ -23,26 +24,36 @@ int main(int argc, char* argv[])
 {
 	AVFormatContext	*pFormatCtx;
 	AVCodecContext	*pCodecCtx;
+	AVPacket *packet=(AVPacket *)av_malloc(sizeof(AVPacket));
 	int videoindex=-1;
 
     // char inpath[]="/home/zhaofachuan/works/readdemo/data/cuc_ieschool.h264";
     // char inpath[]="/home/zhaofachuan/works/readdemo/data/cuc_ieschool.ts";
-	char inpath[] = "srt://127.0.0.1:4201";
+	char inpath[] = "srt://127.0.0.1:4201?pkt_size=1316";
 	
 	avdevice_register_all();//注册libavdevice
     avformat_network_init();//支持网络流
 
+	AVDictionary *options = NULL;
+	av_dict_set(&options, "fflags", "nobuffer", 0);//减少缓冲,降低延时
 	pFormatCtx = avformat_alloc_context();//初始化AVFormatContext
-	printf("LINE=%d \n" ,__LINE__);
-	if (avformat_open_input(&pFormatCtx,inpath, NULL, NULL) != 0){//打开文件或网络流
+	if (avformat_open_input(&pFormatCtx,inpath, NULL, &options) != 0){//打开文件或网络流
 		printf("Couldn't open input stream.\n");
 		return -1;
 	}
-	printf("LINE=%d \n" ,__LINE__);
-    
-	//检查是否从输入设备获取输入流
-	if(avformat_find_stream_info(pFormatCtx,NULL)<0)
-	{
+
+	//接收网络ts流时，需要对AVFormatContext作设置，一般靠avformat_find_stream_info获取流的信息来给AVFormatContext作设置
+	//缺点：在执行avformat_find_stream_info时会出现等待时间过长的情况,读取到非I帧还会出现on-existing PPS 0 referenced错误
+	// while(av_read_frame(pFormatCtx, packet)>=0){//跳过非I帧率，以免sps、pps解析错误
+	// 	if(packet->flags==0){//找到最后一个非I帧，这样avformat_find_stream_info获取的才是I帧率
+	// 		av_packet_unref(packet);
+	// 		break;
+	// 	}
+	// 	av_packet_unref(packet);
+	// }
+
+	// 读取媒体文件的音视频包去获取流信息，只有I帧上才有完整信息，所以必须读取I帧以获取pps和sps头；
+	if(avformat_find_stream_info(pFormatCtx,NULL)<0){
 		printf("Couldn't find stream information.\n");
 		return -1;
 	}
@@ -71,15 +82,13 @@ int main(int argc, char* argv[])
     avcodec_parameters_to_context(pCodecCtx, pFormatCtx->streams[videoindex]->codecpar); 
 	//选择解码器
 	AVCodec	*pCodec=(AVCodec *)avcodec_find_decoder(pCodecCtx->codec_id);
-	if(pCodec==NULL)
-	{
+	if(pCodec==NULL){
 		printf("Codec not found.\n");
 		return -1;
 	}
 
 	//利用pCodec初始化一个音视频编解码器pCodecCtx（AVCodecContext）
-	if(avcodec_open2(pCodecCtx, pCodec,NULL)<0)
-	{
+	if(avcodec_open2(pCodecCtx, pCodec,NULL)<0){
 		printf("Could not open codec.\n");
 		return -1;
 	}
@@ -99,7 +108,7 @@ int main(int argc, char* argv[])
 		printf("SDL: could not set video mode - exiting:%s\n",SDL_GetError());  
 		return -1;
 	}
-
+	
 	SDL_Overlay *bmp;
 	bmp = SDL_CreateYUVOverlay(pCodecCtx->width, pCodecCtx->height,SDL_YV12_OVERLAY, screen);
 	//三个参数表示创建的overlay将接收 YV12 类型的数据，应通过 FFmpeg 库将源视频数据转换为对应类型
@@ -115,11 +124,9 @@ int main(int argc, char* argv[])
 	//转换成AV_PIX_FMT_YUV420P格式
 	//参数1：被转换源的宽、参数2：被转换源的高、参数3：被转换源的格式，eg：YUV、RGB等
 	//参数4：转换后指定的宽、参数5：转换后指定的高、参数6：转换后指定的格式同参数3的格式、参数7：转换所使用的算法
-	
 	SDL_WM_SetCaption("Read Camera",NULL);//设置窗口的标题和ICON图标
 
     int ret;
-	AVPacket *packet=(AVPacket *)av_malloc(sizeof(AVPacket));
     //定义AVFrame
 	AVFrame	*pFrame,*pFrameYUV420;
 	pFrame=av_frame_alloc();
@@ -158,9 +165,6 @@ int main(int argc, char* argv[])
         }
 	}
 
-#if USE_H264BSF
-	av_bitstream_filter_close(h264bsfc);  
-#endif
 	SDL_Quit();
 	av_packet_free(&packet);//释放AVPacket
 	sws_freeContext(img_convert_ctx);//释放img_convert_ctx
